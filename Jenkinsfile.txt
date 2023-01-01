@@ -1,0 +1,119 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Pull code from GitHub') {
+            steps {
+                git 'https://github.com/vikhyatsingh123/Naruto-Shippuden.git'
+            }
+        }
+        
+        
+        stage('Build Docker image on jenkins-slave-node') {
+            steps {
+                sh "sudo docker build -t  aniketadmirl/Narutoweb:${BUILD_TAG}  ."
+              
+            }
+            
+        }
+        
+        
+        stage('Push Image to Docker-Hub Rreository') {
+            steps {   
+                withCredentials([string(credentialsId: 'DOCKER_HUB_PWD', variable: 'DOCKER_HUB_PASS_CODE')]) {
+    
+                sh "sudo docker login -u vimal13 -p $DOCKER_HUB_PASS_CODE"
+                }
+               
+               sh "sudo docker push aniketadmirl/Narutoweb:${BUILD_TAG}"
+            }
+        }
+        
+        
+        stage('Deploy website for Devloper to test') {
+            steps {
+                sh 'sudo docker rm -f webos1'
+                sh "sudo docker run  -d  -p  8080:80 --name webos1 aniketadmirl/Narutoweb:${BUILD_TAG}"
+                
+            }          
+        }
+        
+        
+        stage('Deploy website for Testing team in new ec2 instance which we launch already manually') {
+            steps {
+               sshagent(['TESTING_INFO']) {
+                // "TESTING_INFO" is ID or variable that i create while adding credential about Testing team ec2 instance so jenkins can login to this instance by ssh 
+                    sh "ssh  -o  StrictHostKeyChecking=no ec2-user@13.235.243.109 sudo docker rm -f webos1"
+                //-o  StrictHostKeyChecking=n   <--- when we do ssh first time it yes ask to make connection type yes/no, so to skip this step we use this option
+
+                    sh "ssh ec2-user@13.235.243.109 sudo docker run  -d  -p  8080:80 --name myjavaapp  aniketadmirl/Narutoweb:${BUILD_TAG}"
+                }
+            }           
+        }
+        
+        
+         stage('Testing team doing there test on Website') {
+            steps {
+                retry(10) {
+                    sh 'curl --silent http://13.235.243.109:80 |  grep naruto'
+                }
+            }
+        }
+          
+         
+        stage('Give manual approval') {
+            steps {
+                input(message: 'like to release deployment to production')
+
+            /*    
+            script {
+                Boolean userInput = input(id: 'Proceed1', message: 'Release to Production build?', parameters: [[$class: 'BooleanParameterDefinition', defaultValue: true, description: '', name: 'Please confirm you agree with this']])
+                echo 'userInput: ' + userInput
+                if(userInput == true) {
+                    // do action
+                } else {
+                    // not do action
+                    echo "Action was aborted."
+                }  
+            }
+            */
+        }
+    }
+        
+           
+        stage('Deploy website in Production in new ec2 instance which we launched already manually') {
+            steps {
+               sshagent(['PRODUCTION_INFO']) {
+
+                    sh "ssh  -o  StrictHostKeyChecking=no ec2-user@35.154.112.94 sudo docker rm -f webos1"
+                    sh "ssh  ec2-user@35.154.112.94 sudo docker run  -d  -p  8080:80 --name myjavaapp  aniketadmirl/Narutoweb:${BUILD_TAG}"
+                }
+            }
+            
+        } 
+        
+    
+        
+    }
+    
+  
+        
+     post {
+         always {
+             echo "You can always see me"
+         }
+         success {
+              echo "I am running because the job ran successfully"
+         }
+         unstable {
+              echo "Gear up ! The build is unstable. Try fix it"
+         }
+         failure {
+             echo "OMG ! The build failed"
+             mail bcc: '', body: 'hi check this ..', cc: '', from: '', replyTo: '', subject: 'job ete fail', to: 'vdaga@lwindia.com'
+         }
+     }
+
+    
+    
+}

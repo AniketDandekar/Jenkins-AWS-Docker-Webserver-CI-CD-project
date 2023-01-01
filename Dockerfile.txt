@@ -1,0 +1,3 @@
+FROM httpd:latest
+
+ADD webapp.tar.gz /usr/local/apache2/htdocs/
